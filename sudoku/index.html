@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sudoku</title>
+<style>
+  :root {
+    --paper: #dbd5d6; --rule: #b4acad; --white: #f2efee;
+    --ink: #282828; --ink-soft: #5e595a; --red: #a3262f; --red-wash: rgba(163, 38, 47, 0.14);
+    --cell: min(10vw, 58px);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh; background: var(--paper); color: var(--ink);
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 28px 16px 48px;
+  }
+  h1 { font-size: clamp(1.4rem, 4.5vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em;
+       margin: 0 0 10px; text-align: center; max-width: 34ch; line-height: 1.15; }
+  p.text { margin: 0 0 18px; max-width: 46ch; text-align: center; color: var(--ink-soft); line-height: 1.5; }
+
+  .bar { width: calc(var(--cell) * 9 + 6px); display: flex; justify-content: space-between; align-items: baseline;
+         margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+  .bar .timer { font-weight: 700; letter-spacing: 0.04em; }
+  .bar .status { color: var(--ink-soft); font-weight: 600; }
+  .bar .status.bad { color: var(--red); }
+  .bar .status.done { color: var(--red); font-weight: 800; }
+
+  .board { display: grid; grid-template-columns: repeat(9, var(--cell)); border: 3px solid var(--ink);
+           background: var(--white); user-select: none; touch-action: manipulation; }
+  .cell { width: var(--cell); height: var(--cell); position: relative; cursor: pointer;
+          border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+          display: flex; align-items: center; justify-content: center; transition: background-color .12s; }
+  .cell:nth-child(9n+3), .cell:nth-child(9n+6) { border-right: 2px solid var(--ink); }
+  .cell:nth-child(9n) { border-right: none; }
+  .cell:nth-child(n+19):nth-child(-n+27), .cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid var(--ink); }
+  .cell:nth-child(n+73) { border-bottom: none; }
+
+  .val { font-size: calc(var(--cell) * 0.52); font-weight: 700; color: #2f5d8a; line-height: 1; }
+  .cell.given .val { color: var(--ink); }
+  .notes { position: absolute; inset: 2px; display: grid; grid-template-columns: repeat(3, 1fr);
+           grid-template-rows: repeat(3, 1fr); font-size: calc(var(--cell) * 0.2); font-weight: 600;
+           color: var(--ink-soft); text-align: center; align-items: center; line-height: 1; }
+  .notes span.hit { color: var(--white); background: var(--ink-soft); border-radius: 2px; }
+
+  .cell.diag { background-image: linear-gradient(135deg, transparent 47%, rgba(40,40,40,.10) 47%, rgba(40,40,40,.10) 53%, transparent 53%); }
+  .cell.mark::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px;
+                      border-radius: 50%; background: var(--red); }
+  .cell.area { background-color: rgba(40, 40, 40, 0.07); }
+  .cell.same { background-color: rgba(47, 93, 138, 0.22); }
+  .cell.sel { background-color: rgba(47, 93, 138, 0.38); box-shadow: inset 0 0 0 3px var(--ink); }
+  .cell.bad { background-color: var(--red-wash); }
+  .cell.bad .val { color: var(--red); }
+  .cell.pop .val { animation: pop .22s ease-out; }
+  @keyframes pop { from { transform: scale(.6); opacity: .3; } to { transform: scale(1); opacity: 1; } }
+
+  .solved .cell { background-image: none; background-color: transparent; box-shadow: none; }
+  .solved .cell.diag { background-color: var(--ink); }
+  .solved .cell.diag .val { color: var(--white); }
+  .solved .cell.mark { background-color: var(--red); }
+  .solved .cell.mark .val { color: var(--white); }
+  .solved .cell.mark::after { background: var(--white); }
+
+  .keys { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-top: 16px;
+          width: calc(var(--cell) * 9 + 6px); }
+  .keys button, .tools button {
+    font: inherit; border: 2px solid var(--ink); background: var(--white); color: var(--ink); cursor: pointer;
+  }
+  .keys button { height: 54px; font-size: 1.2rem; font-weight: 800; display: flex; flex-direction: column;
+                 align-items: center; justify-content: center; gap: 2px; padding: 0; }
+  .keys button small { font-size: 0.62rem; font-weight: 600; color: var(--ink-soft); }
+  .keys button.done { opacity: .35; }
+  .keys button:hover, .tools button:hover { background: var(--ink); color: var(--white); }
+  .keys button:hover small { color: var(--rule); }
+  .tools { display: flex; gap: 8px; margin-top: 10px; width: calc(var(--cell) * 9 + 6px); }
+  .tools button { flex: 1; height: 44px; font-size: 0.9rem; font-weight: 700; }
+  .tools button[aria-pressed="true"] { background: var(--ink); color: var(--white); }
+
+  footer { margin-top: 22px; font-size: 0.8rem; color: var(--ink-soft); text-align: center; line-height: 1.6; max-width: 52ch; }
+  footer kbd { font: inherit; font-weight: 700; border: 1px solid var(--rule); padding: 0 4px; background: var(--white); }
+  footer button { font: inherit; background: none; border: none; color: var(--ink-soft); text-decoration: underline; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>So this is what Dorin does all day.</h1>
+<p class="text">Finish his game. The line that crosses the whole board tells you what to do. The marked cells, read in order, let you in.</p>
+<div class="bar"><span class="timer" id="timer">00:00</span><span class="status" id="status" aria-live="polite"></span></div>
+<div class="board" id="board" role="grid" aria-label="Sudoku board"></div>
+<div class="keys" id="keys"></div>
+<div class="tools">
+  <button type="button" id="undo">Undo</button>
+  <button type="button" id="notes" aria-pressed="false">Notes: off</button>
+  <button type="button" id="erase">Erase</button>
+</div>
+<footer>Each letter once in every row, column and 3×3 box.<br>
+  Type a letter or tap it · <kbd>Space</kbd> notes · <kbd>⌫</kbd> erase · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · arrows move<br>
+  <button id="reset" type="button">Start over</button></footer>
+<script>
+const D = {"givens":"...Z.R.A.D...C.P.O.T...D.ZIO....C.T.RICP.A.....AR.OIPCIR.O.....A.OCR..ID...T...O.","symbols":"ACDIOPRTZ","marks":[4,31,44,49,76],"diagonal":[0,10,20,30,40,50,60,70,80]};
+const N = 9, givens = D.givens, symbols = D.symbols.split('');
+const KEY = 'sudoku:' + givens;
+const $ = id => document.getElementById(id);
+const board = $('board'), statusEl = $('status'), timerEl = $('timer');
+
+let grid = givens.split('').map(c => (c === '.' ? '' : c));
+let notes = Array.from({ length: 81 }, () => new Set());
+let sel = givens.indexOf('.'), noteMode = false, elapsed = 0, history = [], solved = false, popAt = -1;
+
+const box = i => 3 * Math.floor(Math.floor(i / N) / 3) + Math.floor((i % N) / 3);
+const PEERS = Array.from({ length: 81 }, (_, i) => {
+  const out = [];
+  for (let j = 0; j < 81; j++) {
+    if (j !== i && (Math.floor(j / N) === Math.floor(i / N) || j % N === i % N || box(j) === box(i))) out.push(j);
+  }
+  return out;
+});
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ grid, notes: notes.map(s => [...s].join('')), elapsed }));
+  } catch (e) { /* storage unavailable */ }
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (!s || !Array.isArray(s.grid) || s.grid.length !== 81) return;
+    s.grid.forEach((c, i) => { if (givens[i] === '.' && symbols.includes(c)) grid[i] = c; });
+    (s.notes || []).forEach((n, i) => { if (givens[i] === '.') notes[i] = new Set([...n].filter(c => symbols.includes(c))); });
+    elapsed = Number(s.elapsed) || 0;
+  } catch (e) { /* start fresh */ }
+}
+const snapshot = () => JSON.stringify({ grid, notes: notes.map(s => [...s].join('')) });
+function remember() { history.push(snapshot()); if (history.length > 300) history.shift(); }
+
+const cells = Array.from({ length: 81 }, (_, i) => {
+  const el = document.createElement('div');
+  el.className = 'cell';
+  el.setAttribute('role', 'gridcell');
+  if (givens[i] !== '.') el.classList.add('given');
+  if (D.diagonal.includes(i)) el.classList.add('diag');
+  if (D.marks.includes(i)) el.classList.add('mark');
+  el.addEventListener('click', () => { sel = i; draw(); });
+  board.appendChild(el);
+  return el;
+});
+
+const keyButtons = symbols.map(s => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.innerHTML = `${s}<small></small>`;
+  b.addEventListener('click', () => enter(s));
+  $('keys').appendChild(b);
+  return b;
+});
+
+function enter(s) {
+  if (solved || sel < 0 || givens[sel] !== '.') return;
+  remember();
+  if (noteMode) {
+    if (grid[sel]) return;
+    notes[sel].has(s) ? notes[sel].delete(s) : notes[sel].add(s);
+  } else {
+    grid[sel] = grid[sel] === s ? '' : s;
+    if (grid[sel]) {
+      notes[sel].clear();
+      PEERS[sel].forEach(p => notes[p].delete(s)); // placing a letter clears it from neighbours' notes
+      popAt = sel;
+    }
+  }
+  save(); draw();
+}
+function erase() {
+  if (solved || sel < 0 || givens[sel] !== '.' || (!grid[sel] && !notes[sel].size)) return;
+  remember(); grid[sel] = ''; notes[sel].clear(); save(); draw();
+}
+function undo() {
+  if (solved || !history.length) return;
+  const s = JSON.parse(history.pop());
+  grid = s.grid; notes = s.notes.map(n => new Set(n)); save(); draw();
+}
+function toggleNotes() {
+  noteMode = !noteMode;
+  $('notes').setAttribute('aria-pressed', String(noteMode));
+  $('notes').textContent = `Notes: ${noteMode ? 'on' : 'off'}`;
+}
+
+$('undo').addEventListener('click', undo);
+$('erase').addEventListener('click', erase);
+$('notes').addEventListener('click', toggleNotes);
+$('reset').addEventListener('click', () => {
+  if (!confirm('Clear all your letters and notes?')) return;
+  grid = givens.split('').map(c => (c === '.' ? '' : c));
+  notes = notes.map(() => new Set()); history = []; elapsed = 0; solved = false; save(); draw();
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { undo(); e.preventDefault(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toUpperCase();
+  if (symbols.includes(k)) enter(k);
+  else if (e.key === 'Backspace' || e.key === 'Delete') erase();
+  else if (e.key === ' ' || k === 'N') { toggleNotes(); e.preventDefault(); }
+  else if (e.key.startsWith('Arrow')) {
+    if (sel < 0) sel = 0;
+    const r = Math.floor(sel / N), c = sel % N;
+    const [dr, dc] = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+    sel = ((r + dr + N) % N) * N + ((c + dc + N) % N);
+    draw(); e.preventDefault();
+  }
+});
+
+function draw() {
+  const bad = new Set();
+  grid.forEach((c, i) => { if (c) PEERS[i].forEach(p => { if (grid[p] === c) bad.add(i); }); });
+  const area = sel >= 0 ? new Set(PEERS[sel]) : new Set();
+  const letter = sel >= 0 ? grid[sel] : '';
+
+  cells.forEach((el, i) => {
+    let html = '';
+    if (grid[i]) html = `<span class="val">${grid[i]}</span>`;
+    else if (notes[i].size) {
+      html = '<div class="notes">' + symbols.map(s =>
+        `<span class="${s === letter && notes[i].has(s) ? 'hit' : ''}">${notes[i].has(s) ? s : ''}</span>`).join('') + '</div>';
+    }
+    el.innerHTML = html;
+    el.classList.toggle('sel', i === sel);
+    el.classList.toggle('area', area.has(i));
+    el.classList.toggle('same', !!letter && grid[i] === letter && i !== sel);
+    el.classList.toggle('bad', bad.has(i));
+    el.classList.toggle('pop', i === popAt);
+  });
+  popAt = -1;
+
+  const counts = Object.fromEntries(symbols.map(s => [s, 0]));
+  grid.forEach(c => { if (c) counts[c]++; });
+  keyButtons.forEach((b, k) => {
+    const left = N - counts[symbols[k]];
+    b.querySelector('small').textContent = left > 0 ? left : '✓';
+    b.classList.toggle('done', left <= 0);
+  });
+
+  solved = grid.every(Boolean) && bad.size === 0;
+  board.classList.toggle('solved', solved);
+  statusEl.className = 'status' + (solved ? ' done' : bad.size ? ' bad' : '');
+  statusEl.textContent = solved ? 'Solved. Now read the board.'
+    : bad.size ? 'Something repeats.' : `${grid.filter(Boolean).length} / 81`;
+}
+
+function tick() {
+  if (!solved && document.visibilityState === 'visible') { elapsed++; if (elapsed % 5 === 0) save(); }
+  const m = Math.floor(elapsed / 60), s = elapsed % 60;
+  timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+load(); draw(); tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
